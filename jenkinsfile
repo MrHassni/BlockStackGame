@@ -1,0 +1,119 @@
+pipeline {
+    agent any
+    
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+
+    stages {
+        
+        stage('Git CheckOut') {
+            steps {
+                git branch: 'main', url: 'https://github.com/MrHassni/BlockStackGame.git'
+            }
+        }
+        
+        stage('Sonar Analysis') {
+            steps {
+                withSonarQubeEnv('Sonar-Sever') {
+                    sh ''' 
+                    $SCANNER_HOME/bin/sonar-scanner\
+                    -Dsonar.projectName=TETRISV1\
+                    -Dsonar.projectKey=TETRISV1 
+                    '''
+                }
+            }
+        }
+        
+        stage('Quality Gate') {
+            steps {
+                script{
+                    waitForQualityGate abortPipeline: false, credentialsId: 'SonarToken'
+                }
+            }
+        }
+        
+        stage('NPM Install') {
+            steps {
+                sh "npm install"
+            }
+        }
+        
+        stage('Trivy FS Scan') {
+            steps {
+                sh "trivy fs . > trivyfs.txt"
+            }
+        }
+        
+        // stage('OWASP FS Scan') {
+        //     steps {
+        //         dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+        //         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        //     }
+        // }
+        
+        //         stage('OWASP FS SCAN') {
+        //     steps {
+        //         // Ensure the report directory is clean first
+        //         sh 'rm -rf dependency-check-report.xml'
+                
+        //         // Run scan
+        //         // --format ALL ensures we get XML (for plugin) and HTML (for you)
+        //         dependencyCheck additionalArguments: '--scan ./ --format ALL --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                
+        //         // Publish results
+        //         dependencyCheckPublisher pattern: 'dependency-check-report.xml'
+                
+        //         // Archive HTML for you to view
+        //         archiveArtifacts artifacts: 'dependency-check-report.html'
+        //     }
+        // }
+        
+        stage('Docker Build & Push') {
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                        sh'''
+                        docker build -t stackgamev1 .
+                        docker tag stackgamev1 prinxehasi/stackgamev1:latest
+                        docker push prinxehasi/stackgamev1:latest
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Trivy Image Scan') {
+            steps {
+                sh '''
+                trivy image \
+                --severity HIGH,CRITICAL \
+                --exit-code 1 \
+                --format table \
+                -o trivy-image-report.html \
+                prinxehasi/stackgamev1:latest || true
+                '''
+                archiveArtifacts artifacts: 'trivy-image-report.html', allowEmptyArchive: true
+                }
+            }
+            
+                    stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    // 1. Connect kubectl to your EKS Cluster
+                    sh 'aws eks update-kubeconfig --region us-east-1 --name EKS_CLOUD'
+                    
+                    // 2. Apply the files you just created
+                    sh 'kubectl apply -f deployment-service.yml'
+                }
+            }
+        }
+        
+        
+    }
+}
