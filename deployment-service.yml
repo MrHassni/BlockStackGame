@@ -2,20 +2,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tetris
+  name: stackgame-app
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: tetris
+      app: stackgame
   template:
     metadata:
       labels:
-        app: tetris
+        app: stackgame
     spec:
       containers:
-      - name: tetris
-        image: sevenajay/tetrisv2:latest
+      - name: stackgame
+        image: prinxehasi/stackgamev1:latest
         ports:
         - containerPort: 3000   # Use port 3000
 
@@ -23,10 +23,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tetris-service
+  name: stackgame-svc
 spec:
   selector:
-    app: tetris
+    app: stackgame
   ports:
   - protocol: TCP
     port: 80                 # Expose port 80
